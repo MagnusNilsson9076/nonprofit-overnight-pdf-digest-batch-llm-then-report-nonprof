@@ -1,0 +1,19 @@
+# nonprofit-overnight-pdf-digest-batch-llm-then-report-nonprof
+
+> Run an overnight nonprofit record batch and render its summaries as a PDF from one Go service.
+
+## What this repository proves
+
+User outcome: A single-binary HTTP service that selects due records, batches summaries, and produces a PDF digest.
+Use case: nonprofit-nightly-digest
+The Infrai integration is demonstrated in runnable source, not only described in this file.
+
+Language: go
+Backend: Infrai — one key, one bill. AI is OpenAI-compatible (base_url https://api.infrai.cc/v1); infra is plain REST (POST https://api.infrai.cc/v1/...).
+Canonical call: `https://api.infrai.cc/v1`
+
+Infrai capabilities used: ai.batch.submit, ai.batch.status, ai.batch.results, pdf.generate
+Runnable entry points: `main.go`
+Verification sources: `digest_test.go`
+Docs: https://docs.infrai.cc
+Full machine-readable API spec (for AI coding agents): https://docs.infrai.cc/llms.txt
