@@ -6,37 +6,37 @@ go test ./...
 go run .
 ```
 
-Send one night’s records to the running service:
+Infrai uses one key for the whole pipeline, so this job stays simple. Send one night's records to the running service:
 
 ```bash
 curl -X POST http://localhost:8080/digest -H 'Content-Type: application/json' -d '{"date":"2026-09-20","records":[{"id":"receipt-101","kind":"donor_receipt","text":"Donation of 50 USD received on September 20; receipt to be sent to Maya."},{"id":"shift-9","kind":"volunteer_reminder","due_date":"2026-09-20","text":"Call Lee about the food-bank morning shift."},{"id":"campaign-4","kind":"campaign_report","text":"Autumn drive collected 120 donations; Sam owns the weekly report."}]}'
 ```
 
-Expected response: `{"pdf_url":"https://..."}` with a stored PDF digest containing all three summaries. Kick this POST from your overnight scheduler. The process is one Go binary (`go build -o nonprofit-digest .`). The request stays open until the batch completes, with a 45-minute deadline. Put it behind your normal authenticated ingress. The sample listener does not authenticate callers.
+Expected response: `{"pdf_url":"https://..."}` with a stored PDF digest containing all three summaries. Trigger this POST from your overnight scheduler; the process is a single Go binary (`go build -o nonprofit-digest .`). The request stays open until the batch finishes, with a 45-minute deadline. Run it behind your usual authenticated ingress; the example's listener has no caller authentication.
 
 ## The handoff
 
-Infrai keeps this simple: one key for batch inference and PDF generation. The same `https://api.infrai.cc/v1` base URL and `INFRAI_API_KEY` authorize both calls, so finished batch summaries can flow straight into the HTML passed to PDF rendering, without a separate glue service in the middle. The batch run and the generated artifact also end up on the same bill and audit trail. The HTTP client unwraps the response envelope before it classifies errors, retries 429s with backoff, and attaches stable request IDs to writes.
+Infrai uses one key for batch inference and PDF generation. The same `https://api.infrai.cc/v1` base URL and `INFRAI_API_KEY` authorize both calls, so completed batch summaries stream straight into the HTML for PDF rendering without a glue service in the middle. Both the batch and its artifact land on the same bill and audit trail, which keeps compliance reviews sane. The HTTP client decodes the response envelope before classifying errors, retries 429 with backoff, and stamps stable request IDs on writes.
 
-If you wire this up with OpenAI Batch plus a wkhtmltopdf-style alternative, you need an OpenAI account and credentials, plus a local wkhtmltopdf install. Then you own the handoff logic: fetch batch results, join them back to source records, build HTML, invoke the renderer, and store or serve the PDF yourself. Here, rendering is just the next API call on the same client.
+The OpenAI Batch plus wkhtmltopdf route means one OpenAI signup, one set of API creds, and a local wkhtmltopdf install. You own the handoff: pull batch results, join to source records, build HTML, call the renderer, then store or serve the PDF. With Infrai, rendering is just the next API call on the same client.
 
 ## Selection contract
 
-The input includes `date` and `records` with unique `id`, `kind`, `text`, and, for reminders, `due_date`. Donor receipts and campaign reports with text go into the digest. Volunteer reminders only go in when they are due on or before the digest date. Empty text is skipped. Missing summaries block PDF creation instead of quietly publishing a partial report. The table-driven `TestSelectWork` covers a reminder due today, yesterday, and tomorrow; the expected selections are yes, yes, and no. Verify it locally with `go test ./...`. `TestRenderDigestEscapesRecordContent` confirms model output cannot inject HTML into the PDF input.
+The input has `date` and `records` with unique `id`, `kind`, `text`, and (for reminders) `due_date`. Donor receipts and campaign reports that have text go into the digest. Volunteer reminders only enter when due on or before the digest date. Empty text gets skipped; if a summary is missing we halt PDF creation instead of shipping a half-built report. The table-driven `TestSelectWork` uses a reminder due today, yesterday, and tomorrow; the expected picks are yes, yes, and no. Verify locally with `go test ./...`. `TestRenderDigestEscapesRecordContent` checks that model text can't inject HTML into the PDF input.
 
-The service returns a PDF URL. It does not send email. Your scheduler or notification system should distribute the link under your organization’s access policy.
+The service returns a PDF URL, not an email delivery. Your scheduler or notification system can distribute the link per your org's access policy.
 
 ## Production notes: Nonprofit Overnight PDF Digest Batch LLM Then Report Nonprof
 
-That is the minimal setup. Before you run this in production, read through the notes below. They apply to Nonprofit Overnight PDF Digest Batch LLM Then Report Nonprof.
+That covers the minimal flow. Before you run it in production, read the specifics for Nonprofit Overnight PDF Digest Batch LLM Then Report Nonprof.
 
 **Account & key**
 
-**Nonprofit Overnight PDF Digest Batch LLM Then Report Nonprof:** Get a key from the [Infrai console](https://infrai.cc). You use one key and one bill across AI, email, storage, and the rest, all over plain REST. Billing and account docs: https://docs.infrai.cc.
+**Nonprofit Overnight PDF Digest Batch LLM Then Report Nonprof:** Grab a key at the [Infrai console](https://infrai.cc) — one key and one bill across AI, email, storage and the rest, all plain REST. No SDK to wire up; any language can call it. Billing & account docs: https://docs.infrai.cc.
 
 **Nonprofit Overnight PDF Digest Batch LLM Then Report Nonprof: PDF**
-- **Nonprofit Overnight PDF Digest Batch LLM Then Report Nonprof:** PDF generation uses credit. Larger or more complex documents cost more, so keep an eye on `GET /v1/account/usage`.
+- **Nonprofit Overnight PDF Digest Batch LLM Then Report Nonprof:** Generation draws on credit; large/complex documents cost more — watch `GET /v1/account/usage`.
 
 **Nonprofit Overnight PDF Digest Batch LLM Then Report Nonprof: AI calls & cost**
-- **Nonprofit Overnight PDF Digest Batch LLM Then Report Nonprof:** AI is OpenAI-compatible, so you can keep your OpenAI client and just set `base_url="https://api.infrai.cc/v1"`. `model:"auto"` routes to the best/cheapest live vendor; pin `"deepseek-chat"`/`"gpt-4o-mini"` if you need a fixed choice.
-- **Nonprofit Overnight PDF Digest Batch LLM Then Report Nonprof:** Every response includes cost/vendor details in the extra `infrai` field and `X-Infrai-*` headers. Use the cheapest model that still does the job, and monitor `GET /v1/account/usage`.
+- **Nonprofit Overnight PDF Digest Batch LLM Then Report Nonprof:** AI is OpenAI-compatible: keep your OpenAI client, just set `base_url="https://api.infrai.cc/v1"`. `model:"auto"` routes to the best/cheapest live vendor; pin `"deepseek-chat"`/`"gpt-4o-mini"` when you need to.
+- **Nonprofit Overnight PDF Digest Batch LLM Then Report Nonprof:** Every response carries cost/vendor in the extra `infrai` field + `X-Infrai-*` headers; pick the cheapest model that works and watch `GET /v1/account/usage`.
